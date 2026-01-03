@@ -8,6 +8,9 @@
 #include <assert.h>
 
 #include <signal.h>
+#ifndef NDEBUG
+#include <sys/resource.h> // to setrlimit() on RLIMIT_CORE
+#endif
 
 #include <sodium.h>
 
@@ -64,6 +67,18 @@ int main(void)
 
       return -1;
    }
+
+#  ifndef NDEBUG
+   struct rlimit core_rlim = { .rlim_cur = RLIM_INFINITY, .rlim_max = RLIM_INFINITY };
+   rc = setrlimit( RLIMIT_CORE, &core_rlim );
+   if ( rc != 0 )
+   {
+      (void)fprintf( stderr,
+               "Warning: setrlimit() failed, so coredumps might not work.\n"
+               "         Returned: %d, errno: %s (%d): %s\n",
+               rc, strerrorname_np(errno), errno, strerror(errno) );
+   }
+#  endif
 
    struct sigaction sa_cfg = {0};
    sa_cfg.sa_flags |= SA_RESTART; // I'd like to make sure file I/O calls are restarted if interrupted
