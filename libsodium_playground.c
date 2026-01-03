@@ -609,7 +609,7 @@ int main(void)
       {
          char hexbuf[256] = {0};
 
-         (void)printf("Hex: ");
+         (void)printf("hex: ");
          (void)fflush(stdout);
 
          bool success = getUserInput(hexbuf, sizeof hexbuf, true);
@@ -628,7 +628,11 @@ int main(void)
                                     &binlen, &hexend );
 
          assert(hexend != nullptr);
-         assert(sodiumrc == 0); // Either I provided too small a binbuf or hex_end wasn't provided
+         assert(binlen < hexlen);
+         // sodium_hex2bin should succeed because a nonzero return means either
+         // I provided too small a binbuf or hex_end wasn't provided, which is
+         // a design issue to me.
+         assert(sodiumrc == 0);
          if ( *hexend != '\0'
               || (binlen < (hexlen/2) || binlen > (hexlen+1)/2 ) )
          {
