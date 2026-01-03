@@ -194,7 +194,7 @@ int main(void)
          (void)printf("%s\n", msg);
       }
 
-      else if ( strcmp(cmd, "addpassphrase") == 0 )
+      else if ( strcmp(cmd, "addpass") == 0 )
       {
          (void)printf("Note old encrypted content will remain!\n"
                       "New Passphrase: ");
