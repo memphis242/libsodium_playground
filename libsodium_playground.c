@@ -652,13 +652,56 @@ int main(void)
 
          assert(isNulTerminated(b64buf));
 
-         (void)printf("B64: %s\n", b64buf);
+         (void)printf("b64: %s\n", b64buf);
       }
 
       else if ( strcmp(cmd, "b64tohex") == 0 )
       {
-         // TODO
-         (void)printf("Not implemented yet.\n");
+         char b64buf[1024] = {0};
+
+         (void)printf("b64: ");
+         (void)fflush(stdout);
+
+         bool success = getUserInput(b64buf, sizeof b64buf, false);
+         if ( !success )
+            continue;
+         assert(isNulTerminated(b64buf));
+
+         size_t b64len = strlen(b64buf);
+         uint8_t binbuf[ b64len * 3 / 4 + 1 ];
+         const char * b64end = &b64buf[0];
+         size_t binlen;
+
+         sodiumrc = sodium_base642bin( binbuf, sizeof binbuf,
+                                       b64buf, b64len,
+                                       nullptr, // characters to ignore
+                                       &binlen, &b64end,
+                                       b64variant );
+
+         assert(b64end != nullptr);
+         assert(binlen < b64len);
+         // sodium_hex2bin should succeed because a nonzero return means either
+         // I provided too small a binbuf or hex_end wasn't provided, which is
+         // a design issue to me.
+         assert(sodiumrc == 0);
+         if ( *b64end != '\0' )
+         {
+            (void)fprintf( stderr,
+                     "Error: An invalid base64 character was encountered: '%c' @ idx: %ti\n"
+                     "Unable to properly decode. Aborting cmd...\n",
+                     *b64end, (ptrdiff_t)(b64end - &b64buf[0]) );
+            continue;
+         }
+
+         size_t hexlen = binlen * 2 + 1;
+         char hexbuf[hexlen];
+
+         (void)sodium_bin2hex( hexbuf, sizeof hexbuf,
+                               binbuf, binlen );
+
+         assert(isNulTerminated(hexbuf));
+
+         (void)printf("hex: %s\n", hexbuf);
       }
 
       else if ( strcmp(cmd, "load") == 0 )
