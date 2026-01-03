@@ -607,7 +607,7 @@ int main(void)
 
       else if ( strcmp(cmd, "hextob64") == 0 )
       {
-         char hexbuf[256] = {0};
+         char hexbuf[1024] = {0};
 
          (void)printf("hex: ");
          (void)fflush(stdout);
@@ -618,7 +618,7 @@ int main(void)
          assert(isNulTerminated(hexbuf));
 
          size_t hexlen = strlen(hexbuf);
-         uint8_t binbuf[ (sizeof(hexbuf) + 1) / 2 ];
+         uint8_t binbuf[ (hexlen + 1) / 2 ];
          const char * hexend = &hexbuf[0];
          size_t binlen;
 
