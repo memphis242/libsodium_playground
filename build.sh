@@ -1,0 +1,38 @@
+gcc \
+    -Wall -Wextra \
+    -Wpedantic -pedantic-errors \
+    -Wconversion \
+    -Wdouble-promotion \
+    -Wnull-dereference \
+    -Wwrite-strings \
+    -Wformat=2 -Wformat-overflow=2 -Wformat-signedness \
+    -Wcast-align=strict -Wcast-qual \
+    -Wimplicit-fallthrough=3 -Wswitch-default -Wswitch-enum \
+    -Wfloat-equal \
+    -Wuse-after-free=2 \
+    -Wdeprecated-declarations \
+    -Wmissing-prototypes \
+    -Wparentheses \
+    -Wreturn-type \
+    -Wlogical-op \
+    -Wstrict-aliasing \
+    -Wuninitialized -Wmaybe-uninitialized -Wshadow \
+    -Walloc-zero -Walloc-size \
+    -Wno-unused-variable \
+    -Wno-unused-parameter \
+    -Wno-unused-function \
+    -fanalyzer \
+    -fsanitize-trap \
+    -fsanitize=undefined \
+    -fsanitize=enum \
+    -fsanitize=bool \
+    -fsanitize=bounds \
+    -fsanitize=address \
+    -fdiagnostics-color \
+    -std=c23 \
+    -Og -g3 \
+    -D_POSIX_C_SOURCE=200809L \
+    -D_GNU_SOURCE \
+    $(pkg-config --cflags --libs libsodium) \
+    -o libsodium_playground \
+    libsodium_playground.c
