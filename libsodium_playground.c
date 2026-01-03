@@ -618,6 +618,14 @@ int main(void)
          assert(isNulTerminated(hexbuf));
 
          size_t hexlen = strlen(hexbuf);
+         if ( (hexlen % 2) != 0 )
+         {
+            (void)fprintf( stderr,
+                     "Invalid Encoding: Odd number of hex digits.\n"
+                     "Please try again.\n" );
+            continue;
+         }
+
          uint8_t binbuf[ (hexlen + 1) / 2 ];
          const char * hexend = &hexbuf[0];
          size_t binlen;
@@ -640,6 +648,7 @@ int main(void)
                      "Error: An invalid hex character was encountered: '%c' @ idx: %ti\n"
                      "Unable to properly decode. Aborting cmd...\n",
                      *hexend, (ptrdiff_t)(hexend - &hexbuf[0]) );
+
             continue;
          }
 
@@ -668,6 +677,22 @@ int main(void)
          assert(isNulTerminated(b64buf));
 
          size_t b64len = strlen(b64buf);
+         if ( b64variant == sodium_base64_VARIANT_ORIGINAL
+              && (b64len % 4) != 0 )
+         {
+            (void)fprintf( stderr,
+                     "Invalid Encoding: Since standard base64 encoding is used\n"
+                     "(i.e., /w padding), an encoding must be a multiple of 4\n"
+                     "characters. Instead, %zu characters were encountered, which\n"
+                     "is %zu more than the nearest multiple of 4 that is\n"
+                     "less than %zu (%zu).\n",
+                     b64len,
+                     b64len % 4,
+                     b64len, (b64len / 4) * 4 );
+
+            continue;
+         }
+
          uint8_t binbuf[ b64len * 3 / 4 + 1 ];
          const char * b64end = &b64buf[0];
          size_t binlen;
