@@ -36,6 +36,8 @@ int main(void)
    int mainrc = 0;
    int sodiumrc = 0;
    int rc = 0; // system call return code
+   bool boolrc = false; // internal calls
+                        // TODO: Replace any "success" bools downstream /w this
 
    char * msg = nullptr;
    ptrdiff_t msgsz = 0;
@@ -343,6 +345,7 @@ int main(void)
          FILE * fd = fopen(testkey_filename, "wb");
          if ( fd == nullptr )
          {
+            // FIXME: (void) all fprintf() returns
             fprintf( stderr,
                "Error: Failed to open file %s\n"
                "fopen() returned nullptr, errno: %s (%d): %s\n",
@@ -577,8 +580,59 @@ int main(void)
 
       else if ( strcmp(cmd, "storemsg") == 0 )
       {
-         // TODO
-         (void)printf("Not implemented yet.\n");
+         if ( msg == nullptr )
+         {
+            (void)fprintf(stderr, "No msg present. Aborting cmd...\n");
+            continue;
+         }
+
+         char fname[128] = {0};
+         constexpr char FEXT[] = ".msg";
+         const size_t maxbaselen = sizeof(fname) - sizeof(FEXT) + 1;
+         
+         (void)printf("Filename (/wo extension, < %zu chars): ",
+                      maxbaselen);
+
+         size_t whileloop_reps = 0;
+         boolrc = false;
+
+         while ( !boolrc && whileloop_reps++ < WHILE_LOOP_CAP )
+            boolrc = getUserInput( fname, maxbaselen, false );
+
+         assert( isNulTerminated(fname) );
+         assert(whileloop_reps < WHILE_LOOP_CAP);
+         assert( strlen(fname) <= maxbaselen );
+
+         (void)strcat(fname, FEXT);
+
+         FILE * fd = fopen(fname, "w");
+         if ( fd == nullptr )
+         {
+            (void)fprintf( stderr,
+                     "Error: Failed to open file %s\n"
+                     "fopen() returned nullptr, errno: %s (%d): %s\n",
+                     fname,
+                     strerrorname_np(errno), errno, strerror(errno) );
+
+            continue;
+         }
+
+         {
+            int nwritten = fprintf(fd, "%s", msg);
+
+            if ( nwritten < 0 )
+            {
+               (void)fprintf( stderr,
+                        "Error: fprintf() of msg to %s failed\n"
+                        "errno: %s (%d): %s\n",
+                        fname,
+                        strerrorname_np(errno), errno, strerror(errno) );
+            }
+            else
+            {
+               (void)printf("Successfully wrote msg to specified file.");
+            }
+         }
       }
 
       else if ( strcmp(cmd, "loadmsg") == 0 )
