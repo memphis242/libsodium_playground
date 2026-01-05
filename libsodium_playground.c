@@ -581,13 +581,31 @@ int main(void)
          (void)printf("Not implemented yet.\n");
       }
 
+      else if ( strcmp(cmd, "loadmsg") == 0 )
+      {
+         // TODO
+         (void)printf("Not implemented yet.\n");
+      }
+
       else if ( strcmp(cmd, "storeciphertxt") == 0 )
       {
          // TODO
          (void)printf("Not implemented yet.\n");
       }
 
+      else if ( strcmp(cmd, "loadciphertxt") == 0 )
+      {
+         // TODO
+         (void)printf("Not implemented yet.\n");
+      }
+
       else if ( strcmp(cmd, "storecipherblob") == 0 )
+      {
+         // TODO
+         (void)printf("Not implemented yet.\n");
+      }
+
+      else if ( strcmp(cmd, "loadcipherblob") == 0 )
       {
          // TODO
          (void)printf("Not implemented yet.\n");
