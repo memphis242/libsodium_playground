@@ -919,8 +919,36 @@ static inline ssize_t readFileIntoBuf(FILE * fp, char * buf, size_t bufsz)
 {
    assert(fp != nullptr);
    assert(buf != nullptr);
-   //assert(fisopen(fp)); FIXME: Find some way to check if a file is open...
 
-   int nbytes = fread(buf, 1, bufsz, fp);
+#  ifndef NDEBUG
+   // Assert that the file is open, readable, and its position indicator is at
+   // the beginning of the file
+   long curpos = ftell(fp);
+   if ( curpos < 0 )
+   {
+      // Some example failure codes:
+      // - EBADF would indicate a file that isn't open
+      // - EACCES would indicate lack of permissions
+      (void)fprintf( stderr,
+               "ftell() failed and returned %ld\n"
+               "errno: %s (%d): %s\n",
+               curpos,
+               strerrorname_np(errno), errno, strerror(errno) );
+   }
+   assert(curpos == 0);
+#  endif
 
+   size_t nbytes = fread(buf, 1, bufsz, fp);
+   // If we haven't hit EOF, the buffer wasn't big enough
+   if ( !feof(fp) )
+   {
+      return -1;
+   }
+
+   rewind(fp); // set up future reads to read from the beginning of the file
+               // again and clear EOF indicator
+   assert(nbytes < bufsz);
+   buf[nbytes] = '\0';
+
+   return nbytes;
 }
