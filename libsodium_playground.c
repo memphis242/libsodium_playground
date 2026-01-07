@@ -1,23 +1,30 @@
+// Headers
+// Standard Library Headers
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
 #include <string.h>
 #include <ctype.h>
-
+// Error Handling and Assertions
 #include <errno.h>
 #include <assert.h>
-
+// System Headers
 #include <signal.h>
 #ifndef NDEBUG
 #include <sys/resource.h> // to setrlimit() on RLIMIT_CORE
 #endif
-
+// 3rd Party Libs
 #include <sodium.h>
 
+/*** Local Definitions ***/
+
+/* Local Constants */
 constexpr size_t MAX_STRING_SZ = 10'000;
 
+/* Local Variables */
 static volatile sig_atomic_t bUserEndedSession = false;
 
+/* Local Function Forward Declarations */
 static void handleSIGINT(int signum);
 
 [[nodiscard]]
@@ -31,6 +38,10 @@ static inline bool getUserInput(
       size_t sz,
       bool makelowercase );
 
+[[nodiscard]]
+static inline ssize_t readFileIntoBuf(FILE * fp, char * buf, size_t bufsz);
+
+/*** Main ***/
 int main(void)
 {
    int mainrc = 0;
@@ -901,4 +912,15 @@ static inline bool getUserInput(
       toLowercase(buf);
 
    return true;
+}
+
+[[nodiscard]]
+static inline ssize_t readFileIntoBuf(FILE * fp, char * buf, size_t bufsz)
+{
+   assert(fp != nullptr);
+   assert(buf != nullptr);
+   //assert(fisopen(fp)); FIXME: Find some way to check if a file is open...
+
+   int nbytes = fread(buf, 1, bufsz, fp);
+
 }
