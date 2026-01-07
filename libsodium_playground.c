@@ -220,6 +220,8 @@ int main(void)
          (void)printf("Successfully updated passphrase\n");
 
          // TODO: Provide choice for KDF + AEAD encryption algorithm + parameters...
+         // FIXME: sodium_mlock() passphrase?
+         //        See: https://doc.libsodium.org/doc/password_hashing/default_phf#notes
 
          (void)printf("Generating new encryption key using default libsodium KDF"
                       " for XChaCha20Poly1305_IETF AEAD cipher...\n");
