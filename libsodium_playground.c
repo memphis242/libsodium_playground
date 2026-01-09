@@ -174,7 +174,7 @@ int main(void)
    {
       char cmd[64];
 
-      (void)printf("\n> ");
+      (void)printf("\nsalty playground> ");
       (void)fflush(stdout);
 
       enum UserInputRC uirc = getUserInput(cmd, sizeof cmd, true);
