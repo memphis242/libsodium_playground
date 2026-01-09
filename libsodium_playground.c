@@ -90,7 +90,7 @@ static inline ssize_t readFileIntoBuf(FILE * fp, char * buf, size_t bufsz);
 /*** Main ***/
 int main(void)
 {
-   int mainrc = 0;
+   int mainrc = MAINRC_GOOD;
    int sodiumrc = 0;
    int rc = 0; // system call return code
    bool boolrc = false; // internal calls
@@ -124,7 +124,7 @@ int main(void)
                "sodium_init() returned: %d. Aborting...\n",
                sodiumrc );
 
-      return -1;
+      return MAINRC_SODIUM_INIT_FAILURE;
    }
 
 #  ifndef NDEBUG
@@ -153,7 +153,7 @@ int main(void)
                "Ctrl+C will still terminate the program.\n",
                rc, strerrorname_np(errno), errno, strerror(errno) );
 
-      mainrc |= 0x01;
+      mainrc |= MAINRC_SIGACTION_CFG_FAILURE;
    }
 
    rc = printf("Welcome! This is the libsodium playground. Prepare to get salty...😃\n");
