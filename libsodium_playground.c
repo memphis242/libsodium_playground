@@ -17,12 +17,58 @@
 #include <sodium.h>
 
 /*** Local Definitions ***/
+#define ARRLEN(arr) ( sizeof(arr) / sizeof(arr[0]) )
+
+enum MAINRC
+{
+   MAINRC_PRINTF_FAILURE = -2,
+   MAINRC_SODIUM_INIT_FAILURE = -1,
+   MAINRC_FINE = 0,
+   /* Bitfield from here on out */
+   MAINRC_SIGACTION_CFG_FAILURE = 0x01,
+};
+
+enum UserInputRC
+{
+   UIRC_GOOD = 0,
+   UIRC_EOF_OR_IO = 1,
+   UIRC_TOO_LONG = 2,
+};
+
+struct PGCmd
+{
+   const char * cmd;
+   const char * desc;
+   // TODO: void (*cb)(void);
+};
 
 /* Local Constants */
 constexpr size_t MAX_STRING_SZ = 10'000;
+constexpr char SESSION_FILE_EXT = ".sp.session";
 
 /* Local Variables */
 static volatile sig_atomic_t bUserEndedSession = false;
+
+struct PGCmd PGCmds[] =
+{
+   { "load",       "Load a previous play session from file" },
+   { "save",       "Save current play session to file" },
+   { "ls",         "List the session files in the current directory and /var/TBD" },
+   { "newmsg",     "Create a new msg or replace existing one" },
+   { "printmsg",   "Print the existing msg" },
+   { "newpass",    "Create a new msg or replace existing one" },
+   { "printpass",  "Print the existing passphrase" },
+   { "printkey",   "Print the key derived from the passphrase" },
+   { "verifypass", "Prompt user for passphrase and verify match against stored hash of passphrase" },
+   { "encrypt",    "Encrypt the msg using a symmetric encryption with the key" },
+   { "decrypt",    "Decrypt the ciphertext using a symmetric encryption with the key" },
+   { "printctxt",  "Print the ciphertext from a previous encryption" },
+   { "hextob64",   "Translate hex encoding to a base64 one" },
+   { "b64tohex",   "Translate base64 encoding to a hex one" },
+   { "quit",       "Get out of the playground" },
+   { "exit",       "Get out of the playground" },
+   { "ctrl+d",     "Get out of the playground" },
+};
 
 /* Local Function Forward Declarations */
 static void handleSIGINT(int signum);
@@ -110,11 +156,16 @@ int main(void)
       mainrc |= 0x01;
    }
 
-   rc = printf("Welcome! Let's play /w libsodium!😃\n");
+   rc = printf("Welcome! This is the libsodium playground. Prepare to get salty...😃\n");
    if ( rc < ( (int)sizeof("Welcome! Let's play /w libsodium!😃\n") - 1 ) )
    {
       // Can't print, so we'll just exit /w a specific return code to alert user
-      return -2;
+      return MAINRC_PRINTF_FAILURE;
+   }
+
+   for ( size_t i=0; i < ARRLEN(PGCmds); ++i )
+   {
+      (void)printf( "%s : %s\n", PGCmds[i].cmd, PGCmds[i].desc );
    }
 
    constexpr size_t WHILE_LOOP_CAP = 1'000'000;
