@@ -79,7 +79,7 @@ static bool isNulTerminated(const char * const str);
 static inline void toLowercase(char * const str);
 
 [[nodiscard]]
-static inline bool getUserInput(
+static inline enum UserInputRC getUserInput(
       char * buf,
       size_t sz,
       bool makelowercase );
@@ -177,10 +177,8 @@ int main(void)
       (void)printf("\n> ");
       (void)fflush(stdout);
 
-      if ( fgets(cmd, sizeof cmd, stdin) == nullptr )
-      {
-         // EOF encountered or I/O error encountered... Either way, break free.
-         printf("\nExiting...\n");
+      enum UserInputRC uirc = getUserInput(cmd, sizeof cmd, true);
+      if ( uirc == UIRC_EOF_OR_IO )
          break;
       }
 
@@ -195,8 +193,6 @@ int main(void)
                   "Error: Too many characters entered. Please try again.\n" );
          continue;
       }
-      assert ( newlineptr < (cmd + sizeof(cmd)) );
-      *newlineptr = '\0';
 
       // Treat cmd as case-insensitive
       for ( char * ptr = cmd; ptr != nullptr && ptr < (cmd + sizeof(cmd)) && *ptr != '\0'; ++ptr )
@@ -210,28 +206,19 @@ int main(void)
          (void)printf("Enter message: ");
          (void)fflush(stdout);
 
-         if ( fgets(buf, sizeof buf, stdin) == nullptr )
-         {
-            // EOF encountered or I/O error encountered... Either way, break free.
-            (void)printf("\nExiting...\n");
+         enum UserInputRC uirc = getUserInput(buf, sizeof buf, false);
+         if ( uirc == UIRC_EOF_OR_IO )
             break;
-         }
-
-         newlineptr = memchr(buf, '\n', sizeof buf);
-         if ( newlineptr == nullptr )
-         {
-            int c;
-            while ( (c = fgetc(stdin)) != '\n' && c != EOF );
-
-            (void)fprintf(stderr, "Error: Too many characters entered.\n");
+         else if ( uirc != UIRC_GOOD )
             continue;
-         }
-         assert( newlineptr < (buf + sizeof(buf)) );
-         *newlineptr = '\0';
 
-         // Copy msg over to persistent space outside of this scope
-         msgsz = newlineptr - buf + 1;
-         free(msg); // Override previous msg
+         assert(isNulTerminated(buf));
+
+         // Copy msg over to persistent space outside of this scope, including '\0'
+         msgsz = strlen(buf) + 1;
+         // Override previous msg
+         // FIXME: Use realloc()
+         free(msg);
          msg = malloc( (size_t)(msgsz) * sizeof(char) );
          if ( msg == nullptr )
          {
@@ -258,14 +245,17 @@ int main(void)
          (void)printf("%s\n", msg);
       }
 
-      else if ( strcmp(cmd, "addpass") == 0 )
+      else if ( strcmp(cmd, "newpass") == 0 )
       {
          (void)printf("Note old encrypted content will remain!\n"
                       "New Passphrase: ");
 
-         bool success = getUserInput( passphrase, sizeof passphrase, false );
-         if ( !success )
+         enum UserInputRC uirc = getUserInput( passphrase, sizeof passphrase, false );
+         if ( uirc == UIRC_EOF_OR_IO )
+            break;
+         else if ( uirc != UIRC_GOOD )
             continue;
+
          assert( isNulTerminated(passphrase) );
 
          (void)printf("Successfully updated passphrase\n");
@@ -928,7 +918,7 @@ static inline void toLowercase(char * const str)
 }
 
 [[nodiscard]]
-static inline bool getUserInput(
+static inline enum UserInputRC getUserInput(
       char * buf,
       size_t sz,
       bool makelowercase)
@@ -939,7 +929,7 @@ static inline bool getUserInput(
       // interruption occured. Either way, time to exit gracefully.
       clearerr(stdin);
       printf("\nExiting command...\n");
-      return false;
+      return UIRC_EOF_OR_IO;
    }
 
    // Replace newline /w null-termination
@@ -956,7 +946,7 @@ static inline bool getUserInput(
                "Error: Too many characters in user input encountered.\n"
                "Please try again.\n" );
 
-      return false;
+      return UIRC_TOO_LONG;
    }
    assert( newlineptr < (buf + sz) );
    *newlineptr = '\0';
@@ -964,7 +954,7 @@ static inline bool getUserInput(
    if ( makelowercase )
       toLowercase(buf);
 
-   return true;
+   return UIRC_GOOD;
 }
 
 [[nodiscard]]
