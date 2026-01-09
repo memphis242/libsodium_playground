@@ -180,26 +180,59 @@ int main(void)
       enum UserInputRC uirc = getUserInput(cmd, sizeof cmd, true);
       if ( uirc == UIRC_EOF_OR_IO )
          break;
-      }
-
-      // Replace newline /w null-termination
-      char * newlineptr = memchr(cmd, '\n', sizeof cmd);
-      if ( newlineptr == nullptr )
-      {
-         int c;
-         while ( (c = fgetc(stdin)) != '\n' && c != EOF );
-
-         fprintf( stderr,
-                  "Error: Too many characters entered. Please try again.\n" );
+      else if ( uirc != UIRC_GOOD )
          continue;
+
+      /****************************** Parse Cmds ******************************/
+      // TODO: Use string hashing + switch-case instead of if-elseif
+
+      /*
+   char * msg = nullptr;
+   ptrdiff_t msgsz = 0;
+   uint8_t * cipherblob = nullptr;
+   ptrdiff_t cipherblobsz = 0;
+   char * ciphertxt = nullptr; // base64 encoding of cipherblob
+   ptrdiff_t ciphertxtsz = 0;
+   char passphrase[50] = {0};
+   uint8_t * key = nullptr;
+   size_t keysz = 0;
+   char * b64 = nullptr;
+   size_t b64sz = 0;
+   constexpr int b64variant = sodium_base64_VARIANT_ORIGINAL;
+   constexpr char b64variantstr[] = "sodium_base64_VARIANT_ORIGINAL";
+   char * hex = nullptr;
+   size_t hexsz = 0;
+   uint8_t * salt = nullptr;
+   size_t saltsz = 0;
+      */
+
+      if ( strcmp(cmd, "load") == 0 )
+      {
+         char sfile[256];
+
+         (void)printf("Session file (absolute or relative): ");
+         (void)fflush(stdout);
+
+         (void)fprintf(stderr, "Not yet implemented: load\n");
       }
 
-      // Treat cmd as case-insensitive
-      for ( char * ptr = cmd; ptr != nullptr && ptr < (cmd + sizeof(cmd)) && *ptr != '\0'; ++ptr )
-         *ptr = (char)tolower(*ptr);
+      else if ( strcmp(cmd, "save") == 0 )
+      {
+         char sfile[256]; // TODO: Fixed naming format
 
-      // Parse cmd
-      if ( strcmp(cmd, "newmsg") == 0 )
+         (void)printf("Session file (absolute or relative): ");
+         (void)fflush(stdout);
+
+         (void)fprintf(stderr, "Not yet implemented: save\n");
+      }
+
+      else if ( strcmp(cmd, "ls") == 0 )
+      {
+         // TODO: ls - use dirent.h + opendir(), readdir(), closedir()
+         (void)fprintf(stderr, "Not yet implemented: save\n");
+      }
+
+      else if ( strcmp(cmd, "newmsg") == 0 )
       {
          char buf[2048];
 
@@ -556,6 +589,19 @@ int main(void)
          filecounter++;
       }
 
+      else if ( strcmp(cmd, "printpass") == 0 )
+      {
+         if ( passphrase == nullptr )
+         {
+            (void)fprintf(stderr, "No passphrase present. Aborting cmd...\n");
+            continue;
+         }
+
+         assert(isNulTerminated(passphrase));
+
+         (void)printf("Passphrase: %s\n", passphrase);
+      }
+
       else if ( strcmp(cmd, "printkey") == 0 )
       {
          assert( (key != nullptr && keysz > 0)
@@ -604,19 +650,19 @@ int main(void)
          (void)printf("Not implemented yet.\n");
       }
 
-      else if ( strcmp(cmd, "encryptmsg") == 0 )
+      else if ( strcmp(cmd, "encrypt") == 0 )
       {
          // TODO
          (void)printf("Not implemented yet.\n");
       }
 
-      else if ( strcmp(cmd, "decryptciphertxt") == 0 )
+      else if ( strcmp(cmd, "decrypt") == 0 )
       {
          // TODO
          (void)printf("Not implemented yet.\n");
       }
 
-      else if ( strcmp(cmd, "printciphertxt") == 0 )
+      else if ( strcmp(cmd, "printctxt") == 0 )
       {
          if ( ciphertxt == nullptr )
          {
@@ -855,12 +901,6 @@ int main(void)
          (void)printf("hex: %s\n", hexbuf);
       }
 
-      else if ( strcmp(cmd, "load") == 0 )
-      {
-         // TODO
-         (void)printf("Not implemented yet.\n");
-      }
-
       else if ( strcmp(cmd, "quit") == 0 || strcmp(cmd, "exit") == 0 )
       {
          bUserEndedSession = true;
@@ -963,6 +1003,26 @@ static inline ssize_t readFileIntoBuf(FILE * fp, char * buf, size_t bufsz)
    assert(fp != nullptr);
    assert(buf != nullptr);
 
+   /* Assert that the file is valid */
+   const int fd = fileno(fp);
+   if ( fd < 0 )
+   {
+
+   }
+
+   const int fstatusflags = fcntl(fd, F_GETFL);
+   if ( fstatusflags < 0 )
+   {
+
+   }
+   else if ( !(fstatusflags != O_RDONLY) && !(fstatusflags != ORDWR) )
+   {
+
+   }
+
+   /* Just rewind the file to make sure we're at the beginning */
+   rewind(fp);
+
 #  ifndef NDEBUG
    // Assert that the file is open, readable, and its position indicator is at
    // the beginning of the file
@@ -987,9 +1047,14 @@ static inline ssize_t readFileIntoBuf(FILE * fp, char * buf, size_t bufsz)
    {
       return -1;
    }
+   else if ( nbytes > (bufsz - 1) )
+   {
+
+   }
 
    rewind(fp); // set up future reads to read from the beginning of the file
                // again and clear EOF indicator
+
    assert(nbytes < bufsz);
    buf[nbytes] = '\0';
 
