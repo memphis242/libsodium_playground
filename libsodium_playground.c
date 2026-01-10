@@ -168,7 +168,8 @@ int main(void)
       mainrc |= MAINRC_SIGACTION_CFG_FAILURE;
    }
 
-   rc = printf("Welcome! This is the libsodium playground. Prepare to get salty...😃\n");
+   rc = printf("Welcome! This is the libsodium playground. Prepare to get salty...😃\n"
+               "--------------------------------------------------------------------\n");
    if ( rc < ( (int)sizeof("Welcome! Let's play /w libsodium!😃\n") - 1 ) )
    {
       // Can't print, so we'll just exit /w a specific return code to alert user
@@ -177,7 +178,7 @@ int main(void)
 
    for ( size_t i=0; i < ARRLEN(PGCmds); ++i )
    {
-      (void)printf( "%s : %s\n", PGCmds[i].cmd, PGCmds[i].desc );
+      (void)printf( "%-15s : %s\n", PGCmds[i].cmd, PGCmds[i].desc );
    }
 
    constexpr size_t WHILE_LOOP_CAP = 1'000'000;
