@@ -1,6 +1,7 @@
 // Headers
 // Standard Library Headers
 #include <stdio.h>
+#include <fcntl.h>
 #include <stdlib.h>
 #include <stddef.h>
 #include <string.h>
@@ -23,7 +24,7 @@ enum MAINRC
 {
    MAINRC_PRINTF_FAILURE = -2,
    MAINRC_SODIUM_INIT_FAILURE = -1,
-   MAINRC_FINE = 0,
+   MAINRC_GOOD = 0,
    /* Bitfield from here on out */
    MAINRC_SIGACTION_CFG_FAILURE = 0x01,
 };
@@ -35,6 +36,14 @@ enum UserInputRC
    UIRC_TOO_LONG = 2,
 };
 
+enum ReadFileRC
+{
+   RFRC_GOOD = 0,
+   RFRC_INVALID_FILE = 1,
+   RFRC_FILE_NOT_READABLE = 2,
+   RFRC_BUF_TOO_SMALL = 3,
+};
+
 struct PGCmd
 {
    const char * cmd;
@@ -44,7 +53,7 @@ struct PGCmd
 
 /* Local Constants */
 constexpr size_t MAX_STRING_SZ = 10'000;
-constexpr char SESSION_FILE_EXT = ".sp.session";
+constexpr char SESSION_FILE_EXT[] = ".sp.session";
 
 /* Local Variables */
 static volatile sig_atomic_t bUserEndedSession = false;
@@ -85,7 +94,10 @@ static inline enum UserInputRC getUserInput(
       bool makelowercase );
 
 [[nodiscard]]
-static inline ssize_t readFileIntoBuf(FILE * fp, char * buf, size_t bufsz);
+static inline enum ReadFileRC readFileIntoBuf(
+      FILE * fp,
+      char * buf,
+      size_t bufsz );
 
 /*** Main ***/
 int main(void)
@@ -239,7 +251,7 @@ int main(void)
          (void)printf("Enter message: ");
          (void)fflush(stdout);
 
-         enum UserInputRC uirc = getUserInput(buf, sizeof buf, false);
+         uirc = getUserInput(buf, sizeof buf, false);
          if ( uirc == UIRC_EOF_OR_IO )
             break;
          else if ( uirc != UIRC_GOOD )
@@ -248,7 +260,7 @@ int main(void)
          assert(isNulTerminated(buf));
 
          // Copy msg over to persistent space outside of this scope, including '\0'
-         msgsz = strlen(buf) + 1;
+         msgsz = (ptrdiff_t)(strlen(buf) + 1);
          // Override previous msg
          // FIXME: Use realloc()
          free(msg);
@@ -283,7 +295,7 @@ int main(void)
          (void)printf("Note old encrypted content will remain!\n"
                       "New Passphrase: ");
 
-         enum UserInputRC uirc = getUserInput( passphrase, sizeof passphrase, false );
+         uirc = getUserInput( passphrase, sizeof passphrase, false );
          if ( uirc == UIRC_EOF_OR_IO )
             break;
          else if ( uirc != UIRC_GOOD )
@@ -591,7 +603,7 @@ int main(void)
 
       else if ( strcmp(cmd, "printpass") == 0 )
       {
-         if ( passphrase == nullptr )
+         if ( passphrase[0] == '\0' )
          {
             (void)fprintf(stderr, "No passphrase present. Aborting cmd...\n");
             continue;
@@ -998,7 +1010,10 @@ static inline enum UserInputRC getUserInput(
 }
 
 [[nodiscard]]
-static inline ssize_t readFileIntoBuf(FILE * fp, char * buf, size_t bufsz)
+static inline enum ReadFileRC readFileIntoBuf(
+      FILE * fp,
+      char * buf,
+      size_t bufsz )
 {
    assert(fp != nullptr);
    assert(buf != nullptr);
@@ -1007,49 +1022,35 @@ static inline ssize_t readFileIntoBuf(FILE * fp, char * buf, size_t bufsz)
    const int fd = fileno(fp);
    if ( fd < 0 )
    {
+      (void)fprintf( stderr,
+                     "Unable to get file descriptor for fp: %p\n"
+                     "errno: %s (%d): %s\n",
+                     (void *)fp,
+                     strerrorname_np(errno), errno, strerror(errno) );
 
+      return RFRC_INVALID_FILE;
    }
 
-   const int fstatusflags = fcntl(fd, F_GETFL);
-   if ( fstatusflags < 0 )
-   {
-
-   }
-   else if ( !(fstatusflags != O_RDONLY) && !(fstatusflags != ORDWR) )
-   {
-
-   }
+   // FIXME: Apparently, fcntl() and fopen() don't necessarily line up...
+   //const int fstatusflags = fcntl(fd, F_GETFL);
+   //if ( fstatusflags < 0 )
+   //{
+   //
+   //}
+   //else if ( !(fstatusflags != O_RDONLY) && !(fstatusflags != O_RDWR) )
+   //{
+   //
+   //}
 
    /* Just rewind the file to make sure we're at the beginning */
    rewind(fp);
 
-#  ifndef NDEBUG
-   // Assert that the file is open, readable, and its position indicator is at
-   // the beginning of the file
-   long curpos = ftell(fp);
-   if ( curpos < 0 )
-   {
-      // Some example failure codes:
-      // - EBADF would indicate a file that isn't open
-      // - EACCES would indicate lack of permissions
-      (void)fprintf( stderr,
-               "ftell() failed and returned %ld\n"
-               "errno: %s (%d): %s\n",
-               curpos,
-               strerrorname_np(errno), errno, strerror(errno) );
-   }
-   assert(curpos == 0);
-#  endif
-
    size_t nbytes = fread(buf, 1, bufsz, fp);
-   // If we haven't hit EOF, the buffer wasn't big enough
-   if ( !feof(fp) )
+   // If we haven't hit EOF, or we don't have space for a terminating '\0',
+   // the buffer wasn't big enough
+   if ( !feof(fp) || nbytes > (bufsz - 1) )
    {
-      return -1;
-   }
-   else if ( nbytes > (bufsz - 1) )
-   {
-
+      return RFRC_BUF_TOO_SMALL;
    }
 
    rewind(fp); // set up future reads to read from the beginning of the file
@@ -1058,5 +1059,5 @@ static inline ssize_t readFileIntoBuf(FILE * fp, char * buf, size_t bufsz)
    assert(nbytes < bufsz);
    buf[nbytes] = '\0';
 
-   return nbytes;
+   return (ssize_t)nbytes;
 }
