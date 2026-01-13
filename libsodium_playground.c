@@ -264,6 +264,9 @@ int main(void)
          (void)memcpy( msg, buf, (size_t)msgsz );
 
          (void)printf("Successfully received msg.\n");
+
+         // Only increment file counter with a new message!
+         filecounter++;
       }
 
       else if ( strcmp(cmd, "printmsg") == 0 )
@@ -288,25 +291,10 @@ int main(void)
          }
 
          char fname[FNAME_MAX_LEN] = {0};
-         constexpr char FEXT[] = ".msg";
-         const size_t maxbaselen = sizeof(fname) - sizeof(FEXT) + 1;
-
-         (void)printf("Filename (/wo extension, < %zu chars): ",
-                      maxbaselen);
-
-         uirc = getUserInput( fname, maxbaselen, false );
-         if ( uirc != UIRC_GOOD )
-         {
-            (void)fprintf( stderr,
-                     "Error: Unable to retrieve input. getUserInput(): %u",
-                     uirc );
-            continue;
-         }
-
-         assert( isNulTerminated(fname) );
-         assert( strlen(fname) <= maxbaselen );
-
-         (void)strcat(fname, FEXT);
+         (void)strcat(fname, "./msg");
+         (void)strcat(fname, (char[]){filecounter, '\0'});
+         (void)strcat(fname, ".txt");
+         assert(isNulTerminated(fname));
 
          FILE * fp = fopen(fname, "w");
          if ( fp == nullptr )
@@ -333,7 +321,7 @@ int main(void)
             }
             else
             {
-               (void)printf("Successfully wrote msg to specified file.\n");
+               (void)printf("Successfully wrote msg to %s\n", fname);
             }
 
             rc = fclose(fp);
@@ -361,6 +349,8 @@ int main(void)
 
       else if ( strcmp(cmd, "newpass") == 0 )
       {
+         static char pass_file_counter = '0';
+
          (void)printf("Note old encrypted content will remain!\n"
                       "New Passphrase: ");
 
@@ -512,20 +502,20 @@ int main(void)
 
          // Write the raw binary key to a file for later viewing
          // TODO: Figure out how you should store salt, KDF alg, and KDF parms
-         char testkey_filename[ sizeof("./testkey") + 1 + sizeof(".bin") ] = {0};
-         (void)strcat(testkey_filename, "./testkey");
-         (void)strcat(testkey_filename, (char[]){filecounter, '\0'});
-         (void)strcat(testkey_filename, ".bin");
-         assert(isNulTerminated(testkey_filename));
+         char fname[FNAME_MAX_LEN] = {0};
+         (void)strcat(fname, "./passkey");
+         (void)strcat(fname, (char[]){pass_file_counter++, '\0'});
+         (void)strcat(fname, ".bin");
+         assert(isNulTerminated(fname));
 
-         FILE * fp = fopen(testkey_filename, "wb");
+         FILE * fp = fopen(fname, "wb");
          if ( fp == nullptr )
          {
             // FIXME: (void) all fprintf() returns
             fprintf( stderr,
                "Error: Failed to open file %s\n"
                "fopen() returned nullptr, errno: %s (%d): %s\n",
-               testkey_filename,
+               fname,
                strerrorname_np(errno), errno, strerror(errno) );
 
             continue;
@@ -542,7 +532,7 @@ int main(void)
                   "Error: Failed to write all the bytes of the key to %s\n"
                   "Wrote only %zu bytes out of %zu (%zu bytes short)\n"
                   "errno: %s (%d): %s\n",
-                  testkey_filename,
+                  fname,
                   nwritten, keysz, keysz - nwritten,
                   strerrorname_np(errno), errno, strerror(errno) );
             }
@@ -557,24 +547,24 @@ int main(void)
             fprintf( stderr,
                "Error: Failed to open file %s\n"
                "fopen() returned nullptr, errno: %s (%d): %s\n",
-               testkey_filename,
+               fname,
                strerrorname_np(errno), errno, strerror(errno) );
 
             continue;
          }
 
          // Repeat for text encodings
-         assert(isNulTerminated(testkey_filename));
-         testkey_filename[ strlen(testkey_filename) - sizeof("bin") + 1 ] = '\0';
-         (void)strcat(testkey_filename, "hex");
+         assert(isNulTerminated(fname));
+         fname[strlen(fname) - sizeof("bin") + 1] = '\0';
+         (void)strcat(fname, "hex");
 
-         fp = fopen(testkey_filename, "w");
+         fp = fopen(fname, "w");
          if ( fp == nullptr )
          {
             fprintf( stderr,
                "Error: Failed to open file %s\n"
                "fopen() returned nullptr, errno: %s (%d): %s\n",
-               testkey_filename,
+               fname,
                strerrorname_np(errno), errno, strerror(errno) );
 
             continue;
@@ -599,7 +589,7 @@ int main(void)
                fprintf( stderr,
                   "Error: fprintf() of hex encodings to %s failed\n"
                   "errno: %s (%d): %s\n",
-                  testkey_filename,
+                  fname,
                   strerrorname_np(errno), errno, strerror(errno) );
             }
          }
@@ -613,22 +603,22 @@ int main(void)
             fprintf( stderr,
                "Error: Failed to open file %s\n"
                "fopen() returned nullptr, errno: %s (%d): %s\n",
-               testkey_filename,
+               fname,
                strerrorname_np(errno), errno, strerror(errno) );
 
             continue;
          }
 
-         testkey_filename[ strlen(testkey_filename) - sizeof("hex") + 1 ] = '\0';
-         (void)strcat(testkey_filename, "b64");
+         fname[strlen(fname) - sizeof("hex") + 1] = '\0';
+         (void)strcat(fname, "b64");
 
-         fp = fopen(testkey_filename, "w");
+         fp = fopen(fname, "w");
          if ( fp == nullptr )
          {
             fprintf( stderr,
                "Error: Failed to open file %s\n"
                "fopen() returned nullptr, errno: %s (%d): %s\n",
-               testkey_filename,
+               fname,
                strerrorname_np(errno), errno, strerror(errno) );
 
             continue;
@@ -653,7 +643,7 @@ int main(void)
                fprintf( stderr,
                   "Error: fprintf() of base64 encodings to %s failed\n"
                   "errno: %s (%d): %s\n",
-                  testkey_filename,
+                  fname,
                   strerrorname_np(errno), errno, strerror(errno) );
             }
          }
@@ -667,15 +657,15 @@ int main(void)
             fprintf( stderr,
                "Error: Failed to open file %s\n"
                "fopen() returned nullptr, errno: %s (%d): %s\n",
-               testkey_filename,
+               fname,
                strerrorname_np(errno), errno, strerror(errno) );
 
             continue;
          }
 
-         printf("Successfully wrote files\n");
-
-         filecounter++;
+         fname[strlen(fname) - sizeof(".hex") + 1] = '\0';
+         printf("Successfully wrote files: %s.bin, %s.hex, %s.b64\n",
+                fname, fname, fname);
       }
 
       else if ( strcmp(cmd, "printpass") == 0 )
@@ -847,11 +837,12 @@ int main(void)
          // Write ciphertext to files as well ----------------------------------
          (void)printf("Writing encrypted data to files (binary and text)...\n");
 
-         char cipherblob_fname[ sizeof("./cipherblob") + 2 + sizeof(".bin") ] = {0};
-         char ciphertxt_fname [ sizeof("./ciphertxt")  + 2 + sizeof(".txt") ] = {0};
+         char cipherblob_fname[ sizeof("./cipherblob") + 1 + sizeof(".bin") ] = {0};
+         char ciphertxt_fname [ sizeof("./ciphertxt")  + 1 + sizeof(".txt") ] = {0};
          (void)strcat(cipherblob_fname, "./cipherblob");
          (void)strcat(ciphertxt_fname,  "./ciphertxt");
-         // TODO: Handle filename uniqueness through repetitions of this cmd...
+         (void)strcat(cipherblob_fname, (char[]){filecounter, '\0'});
+         (void)strcat(ciphertxt_fname,  (char[]){filecounter, '\0'});
          (void)strcat(cipherblob_fname, ".bin");
          (void)strcat(ciphertxt_fname,  ".txt");
 
@@ -961,8 +952,6 @@ int main(void)
          if ( cipherblob == nullptr )
             (void)fprintf(stderr, "No cipher text to decrypt.\n");
 
-         static char decryption_reps = '0'; // Used to make output files unique
-
          // Decrypt ------------------------------------------------------------
          unsigned long long int decryptlen = 0;
          char decrypt[msgsz] = {};
@@ -997,7 +986,7 @@ int main(void)
          // Write to file ------------------------------------------------------
          char fname[FNAME_MAX_LEN] = {0};
          (void)strcat(fname, "decrypt");
-         (void)strcat(fname, (char[]){(char)decryption_reps++, '\0'});
+         (void)strcat(fname, (char[]){(char)filecounter, '\0'});
          (void)strcat(fname, DECRYPT_FILE_EXT);
 
          assert( isNulTerminated(fname) );
