@@ -332,6 +332,21 @@ int main(void)
             {
                (void)printf("Successfully wrote msg to specified file.\n");
             }
+
+            rc = fclose(fp);
+            if ( rc != 0 )
+            {
+               assert(errno != EINTR); // Assert this because I should have set the
+                                       // SA_RESTART flag for the SIGINT handler
+               // TODO: Consider checking if errno was EINTR?
+               fprintf( stderr,
+                  "Error: Failed to close file %s\n"
+                  "fopen() returned nullptr, errno: %s (%d): %s\n",
+                  fname,
+                  strerrorname_np(errno), errno, strerror(errno) );
+
+               continue;
+            }
          }
       }
 
