@@ -106,26 +106,30 @@ int main(void)
    int mainrc = MAINRC_GOOD;
    int sodiumrc = 0;
    int rc = 0; // system call return code
-   bool boolrc = false; // internal calls
-                        // TODO: Replace any "success" bools downstream /w this
+
+   constexpr int b64variant = sodium_base64_VARIANT_ORIGINAL;
+   constexpr char b64variantstr[] = "sodium_base64_VARIANT_ORIGINAL";
 
    char * msg = nullptr;
-   ptrdiff_t msgsz = 0;
-   uint8_t * cipherblob = nullptr;
-   ptrdiff_t cipherblobsz = 0;
-   char * ciphertxt = nullptr; // base64 encoding of cipherblob
-   ptrdiff_t ciphertxtsz = 0;
+   size_t msgsz = 0;
+
    char passphrase[50] = {0};
    uint8_t * key = nullptr;
    size_t keysz = 0;
-   char * b64 = nullptr;
-   size_t b64sz = 0;
-   constexpr int b64variant = sodium_base64_VARIANT_ORIGINAL;
-   constexpr char b64variantstr[] = "sodium_base64_VARIANT_ORIGINAL";
-   char * hex = nullptr;
-   size_t hexsz = 0;
+   char * keyb64 = nullptr;
+   size_t keyb64sz = 0;
+   char * keyhex = nullptr;
+   size_t keyhexsz = 0;
    uint8_t * salt = nullptr;
    size_t saltsz = 0;
+
+   char encryption_method_txt[] = "AEAD AEGIS256";
+   uint8_t * nonce = nullptr;
+   size_t noncelen = 0;
+   uint8_t * cipherblob = nullptr;
+   unsigned long long int cipherblobsz = 0;
+   char * ciphertxt = nullptr; // base64 encoding of cipherblob
+   size_t ciphertxtsz = 0;
 
    char filecounter = '0'; // FIXME: Delete this once I come up with a better scheme later...
 
@@ -200,26 +204,6 @@ int main(void)
       /****************************** Parse Cmds ******************************/
       // TODO: Use string hashing + switch-case instead of if-elseif
 
-      /*
-   char * msg = nullptr;
-   ptrdiff_t msgsz = 0;
-   uint8_t * cipherblob = nullptr;
-   ptrdiff_t cipherblobsz = 0;
-   char * ciphertxt = nullptr; // base64 encoding of cipherblob
-   ptrdiff_t ciphertxtsz = 0;
-   char passphrase[50] = {0};
-   uint8_t * key = nullptr;
-   size_t keysz = 0;
-   char * b64 = nullptr;
-   size_t b64sz = 0;
-   constexpr int b64variant = sodium_base64_VARIANT_ORIGINAL;
-   constexpr char b64variantstr[] = "sodium_base64_VARIANT_ORIGINAL";
-   char * hex = nullptr;
-   size_t hexsz = 0;
-   uint8_t * salt = nullptr;
-   size_t saltsz = 0;
-      */
-
       if ( strcmp(cmd, "load") == 0 )
       {
          char sfile[256];
@@ -262,7 +246,7 @@ int main(void)
          assert(isNulTerminated(buf));
 
          // Copy msg over to persistent space outside of this scope, including '\0'
-         msgsz = (ptrdiff_t)(strlen(buf) + 1);
+         msgsz = strlen(buf) + 1;
          // Override previous msg
          // FIXME: Use realloc()
          free(msg);
@@ -270,7 +254,7 @@ int main(void)
          if ( msg == nullptr )
          {
             (void)fprintf( stderr,
-                     "Error: Couldn't malloc() %ti bytes for a buffer for msg\n",
+                     "Error: Couldn't malloc() %zu bytes for a buffer for msg\n",
                      msgsz);
             continue;
          }
@@ -383,16 +367,18 @@ int main(void)
          free(salt);
          free(key);
 
+         // Allocate necessary chunks for key and salt
          saltsz = crypto_pwhash_SALTBYTES;
          salt = malloc(saltsz);
          if ( salt == nullptr )
          {
             (void)fprintf( stderr,
                      "Error: Couldn't malloc() %zu bytes for a buffer for salt\n",
-                     saltsz);
+                     saltsz );
             continue;
          }
-         keysz = crypto_aead_xchacha20poly1305_ietf_KEYBYTES;
+
+         keysz = crypto_aead_aegis256_KEYBYTES;
          key = malloc(keysz);
          if ( key == nullptr )
          {
@@ -402,6 +388,7 @@ int main(void)
             continue;
          }
 
+         // Generate random salt
          randombytes_buf(salt, saltsz);
 
          // Print salt to console
@@ -417,6 +404,8 @@ int main(void)
          (void)sodium_bin2hex( salthex, salthexsz,
                                salt, saltsz );
 
+         assert( salthexsz >= (saltsz * 2) );
+
          size_t saltb64sz = sodium_base64_ENCODED_LEN(saltsz, b64variant);
          char * saltb64 = malloc( saltb64sz * sizeof(char) );
          if ( saltb64 == nullptr )
@@ -430,6 +419,9 @@ int main(void)
          (void)sodium_bin2base64( saltb64, saltb64sz,
                                   salt, saltsz,
                                   b64variant );
+
+         assert( saltb64sz >= ((saltsz * 3)/4) );
+         assert( saltb64sz <= (((saltsz + 1) * 3)/4) );
 
          (void)printf("Using salt:\n"
                       "- hex: %s\n"
@@ -450,6 +442,7 @@ int main(void)
                                    opslimit, memlimit, alg );
          if ( sodiumrc != 0 )
          {
+            // FIXME: Mention KDF parameters
             (void)fprintf( stderr,
                      "Failed to create encryption key from KDF.\n"
                      "crypto_pwhash returned: %d\n",
@@ -460,43 +453,43 @@ int main(void)
          (void)printf("Successfully generated new encryption key.\n");
 
          // Save the hex encoding (both salt and key) for later printing
-         hexsz= keysz * 2 + 1;
-         hex = malloc( hexsz * sizeof(char) );
-         if ( hex == nullptr )
+         keyhexsz= keysz * 2 + 1;
+         keyhex = malloc( keyhexsz * sizeof(char) );
+         if ( keyhex == nullptr )
          {
             (void)fprintf( stderr,
                      "Error: Couldn't malloc() %zu bytes for a buffer for hex encoding of key\n",
-                     hexsz);
+                     keyhexsz);
             continue;
          }
-         (void)sodium_bin2hex( hex, hexsz,
+         (void)sodium_bin2hex( keyhex, keyhexsz,
                                key, keysz );
 
          // Same for base64 encoding
-         b64sz= sodium_base64_ENCODED_LEN(keysz, b64variant);
-         b64 = malloc( b64sz * sizeof(char) );
-         if ( b64 == nullptr )
+         keyb64sz= sodium_base64_ENCODED_LEN(keysz, b64variant);
+         keyb64 = malloc( keyb64sz * sizeof(char) );
+         if ( keyb64 == nullptr )
          {
             (void)fprintf( stderr,
                      "Error: Couldn't malloc() %zu bytes for a buffer for base64 encoding of key\n",
-                     b64sz);
+                     keyb64sz);
             continue;
          }
-         (void)sodium_bin2base64( b64, b64sz,
+         (void)sodium_bin2base64( keyb64, keyb64sz,
                                   key, keysz,
                                   b64variant );
 
          assert(key != nullptr);
          assert(keysz > 0);
-         assert(hex != nullptr);
-         assert(hexsz > 0);
-         assert(b64 != nullptr);
-         assert(b64sz > 0);
-         assert(isNulTerminated(hex));
-         assert(isNulTerminated(b64));
+         assert(keyhex != nullptr);
+         assert(keyhexsz > 0);
+         assert(keyb64 != nullptr);
+         assert(keyb64sz > 0);
+         assert(isNulTerminated(keyhex));
+         assert(isNulTerminated(keyb64));
 
-         (void)printf("- hex: %s\n", hex);
-         (void)printf("- b64: %s\n", b64);
+         (void)printf("- hex: %s\n", keyhex);
+         (void)printf("- b64: %s\n", keyb64);
 
          (void)printf("Writing key data to files...\n");
 
@@ -508,8 +501,8 @@ int main(void)
          (void)strcat(testkey_filename, ".bin");
          assert(isNulTerminated(testkey_filename));
 
-         FILE * fd = fopen(testkey_filename, "wb");
-         if ( fd == nullptr )
+         FILE * fp = fopen(testkey_filename, "wb");
+         if ( fp == nullptr )
          {
             // FIXME: (void) all fprintf() returns
             fprintf( stderr,
@@ -525,7 +518,7 @@ int main(void)
             size_t nwritten = fwrite( key,
                                       1 /* element sz */,
                                       keysz /* n items */,
-                                      fd );
+                                      fp );
             if ( nwritten != keysz )
             {
                fprintf( stderr,
@@ -538,7 +531,7 @@ int main(void)
             }
          }
 
-         rc = fclose(fd);
+         rc = fclose(fp);
          if ( rc != 0 )
          {
             assert(errno != EINTR); // Assert this because I should have set the
@@ -558,8 +551,8 @@ int main(void)
          testkey_filename[ strlen(testkey_filename) - sizeof("bin") + 1 ] = '\0';
          (void)strcat(testkey_filename, "hex");
 
-         fd = fopen(testkey_filename, "w");
-         if ( fd == nullptr )
+         fp = fopen(testkey_filename, "w");
+         if ( fp == nullptr )
          {
             fprintf( stderr,
                "Error: Failed to open file %s\n"
@@ -571,7 +564,7 @@ int main(void)
          }
 
          {
-            int nwritten = fprintf( fd,
+            int nwritten = fprintf( fp,
                               "Original Passphrase: %s\n"
                               "Salt: %s\n"
                               "KDF Algorithm: %s (%d)\n"
@@ -582,7 +575,7 @@ int main(void)
                               algstr, alg,
                               opslimitstr, opslimit,
                               memlimitstr, memlimit,
-                              hex );
+                              keyhex );
 
             if ( nwritten < 0 )
             {
@@ -595,7 +588,7 @@ int main(void)
          }
          free(salthex);
 
-         rc = fclose(fd);
+         rc = fclose(fp);
          if ( rc != 0 )
          {
             assert(errno != EINTR);
@@ -612,8 +605,8 @@ int main(void)
          testkey_filename[ strlen(testkey_filename) - sizeof("hex") + 1 ] = '\0';
          (void)strcat(testkey_filename, "b64");
 
-         fd = fopen(testkey_filename, "w");
-         if ( fd == nullptr )
+         fp = fopen(testkey_filename, "w");
+         if ( fp == nullptr )
          {
             fprintf( stderr,
                "Error: Failed to open file %s\n"
@@ -625,7 +618,7 @@ int main(void)
          }
 
          {
-            int nwritten = fprintf( fd,
+            int nwritten = fprintf( fp,
                               "Original Passphrase: %s\n"
                               "Salt: %s\n"
                               "KDF Algorithm: %s (%d)\n"
@@ -636,7 +629,7 @@ int main(void)
                               algstr, alg,
                               opslimitstr, opslimit,
                               memlimitstr, memlimit,
-                              b64 );
+                              keyb64 );
 
             if ( nwritten < 0 )
             {
@@ -649,7 +642,7 @@ int main(void)
          }
          free(saltb64);
 
-         rc = fclose(fd);
+         rc = fclose(fp);
          if ( rc != 0 )
          {
             assert(errno != EINTR);
@@ -685,8 +678,8 @@ int main(void)
       {
          assert( (key != nullptr && keysz > 0)
                  || (key == nullptr && keysz == 0) );
-         assert( (hex != nullptr && hexsz > 0)
-                 || (hex == nullptr && hexsz == 0) );
+         assert( (keyhex != nullptr && keyhexsz > 0)
+                 || (keyhex == nullptr && keyhexsz == 0) );
 
          if ( key == nullptr )
          {
@@ -694,26 +687,26 @@ int main(void)
             continue;
          }
 
-         if ( hex == nullptr )
+         if ( keyhex == nullptr )
          {
             (void)fprintf(stderr, "No hex encoding present, skipping.\n");
          }
          else
          {
-            assert(isNulTerminated(hex));
+            assert(isNulTerminated(keyhex));
 
-            (void)printf("Hex: %s\n", hex);
+            (void)printf("Hex: %s\n", keyhex);
          }
 
-         if ( b64 == nullptr )
+         if ( keyb64 == nullptr )
          {
             (void)fprintf(stderr, "No base64 encoding present, skipping.\n");
          }
          else
          {
-            assert(isNulTerminated(hex));
+            assert(isNulTerminated(keyb64));
 
-            (void)printf("Base64: %s\n", b64);
+            (void)printf("Base64: %s\n", keyb64);
          }
       }
 
@@ -731,8 +724,212 @@ int main(void)
 
       else if ( strcmp(cmd, "encrypt") == 0 )
       {
-         // TODO
-         (void)printf("Not implemented yet.\n");
+         if ( key == nullptr || keysz == 0 )
+         {
+            (void)fprintf(stderr, "Error: No key present to encrypt with. Exiting...\n");
+            continue;
+         }
+
+         // At the moment, I'm only supporting AEGIS256 encryption, so key blob
+         // should be sized at crypto_aead_aegis256_KEYBYTES.
+         assert(keysz == crypto_aead_aegis256_KEYBYTES);
+
+         // Overwrite previous cipher data -------------------------------------
+         // Reallocate memory for relevant data
+         noncelen = crypto_aead_aegis256_NPUBBYTES;
+         void * tmpptr = realloc(nonce, noncelen);
+         if ( tmpptr == nullptr )
+         {
+            (void)fprintf( stderr,
+                     "Unable to realloc() nonce. Exiting...\n"
+                     "errno: %s (%d): %s\n",
+                     strerrorname_np(errno), errno, strerror(errno) );
+
+            continue;
+         }
+         nonce = tmpptr;
+
+         size_t cipherblobsz_max = msgsz + crypto_aead_aegis256_ABYTES;
+         tmpptr = realloc(cipherblob, cipherblobsz_max);
+         if ( tmpptr == nullptr )
+         {
+            (void)fprintf( stderr,
+                     "Unable to realloc() cipherblob. Exiting...\n"
+                     "errno: %s (%d): %s\n",
+                     strerrorname_np(errno), errno, strerror(errno) );
+
+            free(nonce);
+            continue;
+         }
+         cipherblob = tmpptr;
+
+         // Encryption time! --------------------------------------------------
+         assert(nonce != nullptr);
+         assert(cipherblob != nullptr);
+         assert( isNulTerminated(encryption_method_txt) );
+
+         (void)printf("Using encryption: %s\n", encryption_method_txt);
+         (void)printf("NOTE: No added metadata included\n\n");
+
+         randombytes_buf(nonce, noncelen);
+
+         sodiumrc = crypto_aead_aegis256_encrypt( cipherblob, &cipherblobsz,
+                                                  (uint8_t *)msg, msgsz,
+                                                  nullptr, 0,
+                                                  nullptr, /* uint8_t * nsec */
+                                                  nonce,
+                                                  key );
+         if ( sodiumrc != 0 )
+         {
+            (void)fprintf( stderr,
+                     "Error: Unable to encrypt msg...\n"
+                     "crypto_aead_aegis256_encrypt() returned %d\n",
+                     sodiumrc );
+
+            free(nonce);
+            free(cipherblob);
+         }
+
+         (void)printf("Successfully encrypted msg.\n");
+
+         // Print out base64 encoding of encrypted msg -------------------------
+         assert(cipherblobsz > 0);
+         ciphertxtsz = sodium_base64_ENCODED_LEN(cipherblobsz, b64variant);
+         tmpptr = realloc(ciphertxt, ciphertxtsz);
+         if ( tmpptr == nullptr )
+         {
+            (void)fprintf( stderr,
+                     "Unable to realloc() ciphertxt. Exiting...\n"
+                     "errno: %s (%d): %s\n",
+                     strerrorname_np(errno), errno, strerror(errno) );
+
+            // FIXME: Figure out what's good to do here...
+            continue;
+         }
+         ciphertxt = tmpptr;
+
+         assert(ciphertxt != nullptr);
+         assert(ciphertxtsz > 0);
+         assert(cipherblob != nullptr);
+         assert(cipherblobsz > 0);
+         assert( (b64variant == sodium_base64_VARIANT_ORIGINAL)
+                 || (b64variant == sodium_base64_VARIANT_ORIGINAL_NO_PADDING)
+                 || (b64variant == sodium_base64_VARIANT_URLSAFE)
+                 || (b64variant == sodium_base64_VARIANT_URLSAFE_NO_PADDING) );
+
+         (void)sodium_bin2base64( ciphertxt, ciphertxtsz,
+                                  cipherblob, cipherblobsz,
+                                  b64variant );
+
+         assert( isNulTerminated(ciphertxt) );
+
+         (void)printf("Base64 encoding of ciphertext:\n%s\n", ciphertxt);
+
+         // Write ciphertext to files as well ----------------------------------
+         (void)printf("Writing encrypted data to files (binary and text)...\n");
+
+         char cipherblob_fname[ sizeof("./cipherblob") + 2 + sizeof(".bin") ] = {0};
+         char ciphertxt_fname [ sizeof("./ciphertxt")  + 2 + sizeof(".txt") ] = {0};
+         (void)strcat(cipherblob_fname, "./cipherblob");
+         (void)strcat(ciphertxt_fname,  "./ciphertxt");
+         // TODO: Handle filename uniqueness through repetitions of this cmd...
+         (void)strcat(cipherblob_fname, ".bin");
+         (void)strcat(ciphertxt_fname,  ".txt");
+
+         assert(isNulTerminated(cipherblob_fname));
+         assert(isNulTerminated(ciphertxt_fname));
+
+         FILE * fp = fopen(cipherblob_fname, "wb");
+         if ( fp == nullptr )
+         {
+            // FIXME: (void) all fprintf() returns
+            (void)fprintf( stderr,
+                     "Error: Failed to open file %s\n"
+                     "fopen() returned nullptr, errno: %s (%d): %s\n",
+                     cipherblob_fname,
+                     strerrorname_np(errno), errno, strerror(errno) );
+
+            continue;
+         }
+
+         {
+            size_t nwritten = fwrite( cipherblob,
+                                      1 /* element sz */,
+                                      cipherblobsz /* n items */,
+                                      fp );
+
+            if ( nwritten != cipherblobsz )
+            {
+               (void)fprintf( stderr,
+                        "Error: Failed to write all the bytes of the cipherblob to %s\n"
+                        "Wrote only %zu bytes out of %llu (%llu bytes short)\n"
+                        "errno: %s (%d): %s\n",
+                        cipherblob_fname,
+                        nwritten, cipherblobsz, cipherblobsz - nwritten,
+                        strerrorname_np(errno), errno, strerror(errno) );
+            }
+         }
+
+         rc = fclose(fp);
+         if ( rc != 0 )
+         {
+            assert(errno != EINTR); // Assert this because I should have set the
+                                    // SA_RESTART flag for the SIGINT handler
+            // TODO: Consider checking if errno was EINTR?
+            (void)fprintf( stderr,
+                     "Error: Failed to open file %s\n"
+                     "fopen() returned nullptr, errno: %s (%d): %s\n",
+                     cipherblob_fname,
+                     strerrorname_np(errno), errno, strerror(errno) );
+
+            continue;
+         }
+
+         fp = fopen(ciphertxt_fname, "w");
+         if ( fp == nullptr )
+         {
+            // FIXME: (void) all fprintf() returns
+            (void)fprintf( stderr,
+                     "Error: Failed to open file %s\n"
+                     "fopen() returned nullptr, errno: %s (%d): %s\n",
+                     ciphertxt_fname,
+                     strerrorname_np(errno), errno, strerror(errno) );
+
+            continue;
+         }
+
+         {
+            int nwritten = fprintf(fp, "%s\n", ciphertxt);
+
+            if ( nwritten < (int)ciphertxtsz )
+            {
+               (void)fprintf( stderr,
+                        "Error: Failed to write all the bytes of the ciphertxt to %s\n"
+                        "Wrote only %d bytes out of %zu (%zu bytes short)\n"
+                        "errno: %s (%d): %s\n",
+                        ciphertxt_fname,
+                        nwritten, ciphertxtsz, ciphertxtsz - (typeof(ciphertxtsz))nwritten,
+                        strerrorname_np(errno), errno, strerror(errno) );
+            }
+         }
+
+         rc = fclose(fp);
+         if ( rc != 0 )
+         {
+            assert(errno != EINTR); // Assert this because I should have set the
+                                    // SA_RESTART flag for the SIGINT handler
+            // TODO: Consider checking if errno was EINTR?
+            (void)fprintf( stderr,
+                     "Error: Failed to open file %s\n"
+                     "fopen() returned nullptr, errno: %s (%d): %s\n",
+                     ciphertxt_fname,
+                     strerrorname_np(errno), errno, strerror(errno) );
+
+            continue;
+         }
+
+         (void)printf("Successfully wrote files: %s and %s\n",
+                       cipherblob_fname, ciphertxt_fname);
       }
 
       else if ( strcmp(cmd, "decrypt") == 0 )
@@ -755,69 +952,6 @@ int main(void)
             continue;
          }
          (void)printf("%s\n", ciphertxt);
-      }
-
-      else if ( strcmp(cmd, "storemsg") == 0 )
-      {
-         if ( msg == nullptr )
-         {
-            (void)fprintf(stderr, "No msg present. Aborting cmd...\n");
-            continue;
-         }
-
-         char fname[128] = {0};
-         constexpr char FEXT[] = ".msg";
-         const size_t maxbaselen = sizeof(fname) - sizeof(FEXT) + 1;
-         
-         (void)printf("Filename (/wo extension, < %zu chars): ",
-                      maxbaselen);
-
-         size_t whileloop_reps = 0;
-         boolrc = false;
-
-         while ( !boolrc && whileloop_reps++ < WHILE_LOOP_CAP )
-            boolrc = getUserInput( fname, maxbaselen, false );
-
-         assert( isNulTerminated(fname) );
-         assert(whileloop_reps < WHILE_LOOP_CAP);
-         assert( strlen(fname) <= maxbaselen );
-
-         (void)strcat(fname, FEXT);
-
-         FILE * fd = fopen(fname, "w");
-         if ( fd == nullptr )
-         {
-            (void)fprintf( stderr,
-                     "Error: Failed to open file %s\n"
-                     "fopen() returned nullptr, errno: %s (%d): %s\n",
-                     fname,
-                     strerrorname_np(errno), errno, strerror(errno) );
-
-            continue;
-         }
-
-         {
-            int nwritten = fprintf(fd, "%s", msg);
-
-            if ( nwritten < 0 )
-            {
-               (void)fprintf( stderr,
-                        "Error: fprintf() of msg to %s failed\n"
-                        "errno: %s (%d): %s\n",
-                        fname,
-                        strerrorname_np(errno), errno, strerror(errno) );
-            }
-            else
-            {
-               (void)printf("Successfully wrote msg to specified file.");
-            }
-         }
-      }
-
-      else if ( strcmp(cmd, "loadmsg") == 0 )
-      {
-         // TODO
-         (void)printf("Not implemented yet.\n");
       }
 
       else if ( strcmp(cmd, "storeciphertxt") == 0 )
@@ -1003,8 +1137,8 @@ int main(void)
    free(ciphertxt);
    free(key);
    free(salt);
-   free(b64);
-   free(hex);
+   free(keyb64);
+   free(keyhex);
    // Close any files that we opened...
    // TODO
 
