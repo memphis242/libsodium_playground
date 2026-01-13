@@ -53,7 +53,10 @@ struct PGCmd
 
 /* Local Constants */
 constexpr size_t MAX_STRING_SZ = 10'000;
+constexpr size_t FNAME_MAX_LEN = 128;
 constexpr char SESSION_FILE_EXT[] = ".sp.session";
+constexpr char MSG_FILE_EXT[] = ".msg";
+constexpr char DECRYPT_FILE_EXT[] = ".msg";
 
 /* Local Variables */
 static volatile sig_atomic_t bUserEndedSession = false;
@@ -284,7 +287,7 @@ int main(void)
             continue;
          }
 
-         char fname[128] = {0};
+         char fname[FNAME_MAX_LEN] = {0};
          constexpr char FEXT[] = ".msg";
          const size_t maxbaselen = sizeof(fname) - sizeof(FEXT) + 1;
 
@@ -376,7 +379,7 @@ int main(void)
          //        See: https://doc.libsodium.org/doc/password_hashing/default_phf#notes
 
          (void)printf("Generating new encryption key using default libsodium KDF"
-                      " for XChaCha20Poly1305_IETF AEAD cipher...\n");
+                      " for AEGIS256 AEAD cipher...\n");
 
          // We will override previous stores
          free(salt);
@@ -837,7 +840,9 @@ int main(void)
 
          assert( isNulTerminated(ciphertxt) );
 
-         (void)printf("Base64 encoding of ciphertext:\n%s\n", ciphertxt);
+         (void)printf("Base64 encoding of ciphertext: %s\n", ciphertxt);
+
+         // TODO: Print nonce as well!
 
          // Write ciphertext to files as well ----------------------------------
          (void)printf("Writing encrypted data to files (binary and text)...\n");
@@ -948,8 +953,103 @@ int main(void)
 
       else if ( strcmp(cmd, "decrypt") == 0 )
       {
-         // TODO
-         (void)printf("Not implemented yet.\n");
+         assert( (cipherblob == nullptr && cipherblobsz == 0)
+                 || (cipherblob != nullptr && cipherblobsz > 0) );
+         assert( (cipherblob == nullptr && nonce == nullptr)
+                 || (cipherblob != nullptr && nonce != nullptr) );
+
+         if ( cipherblob == nullptr )
+            (void)fprintf(stderr, "No cipher text to decrypt.\n");
+
+         static char decryption_reps = '0'; // Used to make output files unique
+
+         // Decrypt ------------------------------------------------------------
+         unsigned long long int decryptlen = 0;
+         char decrypt[msgsz] = {};
+         // Apparently, you can't initialize a variable-length array with anything
+         // but empty braces (which is effectively not initializing it). So,
+         // for loop time!
+         for ( size_t i=0; i < ARRLEN(decrypt); ++i )
+            decrypt[i] = '\0';
+
+         sodiumrc = crypto_aead_aegis256_decrypt( (uint8_t *)decrypt, &decryptlen,
+                                                  nullptr, /* unsigned char *nsec */
+                                                  cipherblob, cipherblobsz,
+                                                  nullptr, /*const unsigned char *ad */
+                                                  0, /* unsigned long long adlen */
+                                                  nonce,
+                                                  key );
+         if ( sodiumrc != 0 )
+         {
+            (void)fprintf(stderr,
+                     "Unable to decrypt ciphertext.\n"
+                     "crypto_aead_aegis256_decrypt() returned: %d\n",
+                     sodiumrc );
+
+            continue;
+         }
+
+         // Print to terminal --------------------------------------------------
+         assert( isNulTerminated(decrypt) );
+
+         (void)printf("%s\n", decrypt);
+
+         // Write to file ------------------------------------------------------
+         char fname[FNAME_MAX_LEN] = {0};
+         (void)strcat(fname, "decrypt");
+         (void)strcat(fname, (char[]){(char)decryption_reps++, '\0'});
+         (void)strcat(fname, DECRYPT_FILE_EXT);
+
+         assert( isNulTerminated(fname) );
+
+         FILE * fp = fopen(fname, "w");
+         if ( fp == nullptr )
+         {
+            (void)fprintf( stderr,
+                     "Error: Failed to open file %s\n"
+                     "fopen() returned nullptr, errno: %s (%d): %s\n",
+                     fname,
+                     strerrorname_np(errno), errno, strerror(errno) );
+
+            continue;
+         }
+
+         int nwritten = fprintf(fp, "%s\n", decrypt);
+         if ( nwritten < 0 )
+         {
+            (void)fprintf( stderr,
+                     "Error: fprintf() of msg to %s failed\n"
+                     "errno: %s (%d): %s\n",
+                     fname,
+                     strerrorname_np(errno), errno, strerror(errno) );
+         }
+         else if ( (typeof(decryptlen))nwritten < decryptlen )
+         {
+            (void)fprintf( stderr,
+                     "Error: Failed to write all the bytes of the decrypted ciphertext to %s\n"
+                     "Wrote only %d bytes out of %llu (%llu bytes short)\n"
+                     "errno: %s (%d): %s\n",
+                     fname,
+                     nwritten, decryptlen, decryptlen - (typeof(decryptlen))nwritten,
+                     strerrorname_np(errno), errno, strerror(errno) );
+         }
+         else
+         {
+            (void)printf("Successfully wrote decrypted ciphertext to %s\n", fname);
+         }
+
+         rc = fclose(fp);
+         if ( rc != 0 )
+         {
+            assert(errno != EINTR); // Assert this because I should have set the
+                                    // SA_RESTART flag for the SIGINT handler
+            // TODO: Consider checking if errno was EINTR?
+            (void)fprintf( stderr,
+                     "Error: Failed to close file %s\n"
+                     "fopen() returned nullptr, errno: %s (%d): %s\n",
+                     fname,
+                     strerrorname_np(errno), errno, strerror(errno) );
+         }
       }
 
       else if ( strcmp(cmd, "printctxt") == 0 )
