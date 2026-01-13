@@ -65,6 +65,7 @@ struct PGCmd PGCmds[] =
    { "ls",         "List the session files in the current directory and /var/TBD" },
    { "newmsg",     "Create a new msg or replace existing one" },
    { "printmsg",   "Print the existing msg" },
+   { "storemsg",   "Store the existing msg into a file" },
    { "newpass",    "Create a new msg or replace existing one" },
    { "printpass",  "Print the existing passphrase" },
    { "printkey",   "Print the key derived from the passphrase" },
@@ -289,6 +290,71 @@ int main(void)
          assert(isNulTerminated(msg));
 
          (void)printf("%s\n", msg);
+      }
+
+      else if ( strcmp(cmd, "storemsg") == 0 )
+      {
+         if ( msg == nullptr )
+         {
+            (void)fprintf(stderr, "No msg present. Aborting cmd...\n");
+            continue;
+         }
+
+         char fname[128] = {0};
+         constexpr char FEXT[] = ".msg";
+         const size_t maxbaselen = sizeof(fname) - sizeof(FEXT) + 1;
+
+         (void)printf("Filename (/wo extension, < %zu chars): ",
+                      maxbaselen);
+
+         uirc = getUserInput( fname, maxbaselen, false );
+         if ( uirc != UIRC_GOOD )
+         {
+            (void)fprintf( stderr,
+                     "Error: Unable to retrieve input. getUserInput(): %u",
+                     uirc );
+            continue;
+         }
+
+         assert( isNulTerminated(fname) );
+         assert( strlen(fname) <= maxbaselen );
+
+         (void)strcat(fname, FEXT);
+
+         FILE * fp = fopen(fname, "w");
+         if ( fp == nullptr )
+         {
+            (void)fprintf( stderr,
+                     "Error: Failed to open file %s\n"
+                     "fopen() returned nullptr, errno: %s (%d): %s\n",
+                     fname,
+                     strerrorname_np(errno), errno, strerror(errno) );
+
+            continue;
+         }
+
+         {
+            int nwritten = fprintf(fp, "%s\n", msg);
+
+            if ( nwritten < 0 )
+            {
+               (void)fprintf( stderr,
+                        "Error: fprintf() of msg to %s failed\n"
+                        "errno: %s (%d): %s\n",
+                        fname,
+                        strerrorname_np(errno), errno, strerror(errno) );
+            }
+            else
+            {
+               (void)printf("Successfully wrote msg to specified file.\n");
+            }
+         }
+      }
+
+      else if ( strcmp(cmd, "loadmsg") == 0 )
+      {
+         // TODO
+         (void)printf("Not implemented yet.\n");
       }
 
       else if ( strcmp(cmd, "newpass") == 0 )
