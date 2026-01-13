@@ -29,6 +29,7 @@ enum MAINRC
    MAINRC_SIGACTION_CFG_FAILURE = 0x01,
 };
 
+// TODO: LUT to stringify these enums and make printing clearer...
 enum UserInputRC
 {
    UIRC_GOOD = 0,
