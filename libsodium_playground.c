@@ -435,8 +435,7 @@ int main(void)
                                   salt, saltsz,
                                   b64variant );
 
-         assert( saltb64sz >= ((saltsz * 3)/4) );
-         assert( saltb64sz <= (((saltsz + 1) * 3)/4) );
+         assert( saltb64sz >= ((saltsz*4) / 3) );
 
          (void)printf("Using salt:\n"
                       "- hex: %s\n"
@@ -1150,6 +1149,7 @@ int main(void)
    free(msg);
    free(cipherblob);
    free(ciphertxt);
+   free(nonce);
    free(key);
    free(salt);
    free(keyb64);
